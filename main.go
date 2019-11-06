@@ -102,25 +102,29 @@ func main() {
 
 	}
 
-	aggLegs := map[string]LegBTS{}
-	for i, sl := range legs {
+	aggLegs := map[string]map[float64]LegBTS{}
+	for _, sl := range legs {
 		result := LegBTS{}
-		if val, ok := aggLegs[sl.Prefix]; ok {
-			if val.Rate != sl.Rate {
-				aggLegs[sl.Prefix+"_"+string(i)] = LegBTS{
+		rateMap := map[float64]LegBTS{}
+		if item, ok := aggLegs[sl.Prefix]; ok {
+			if rate, ok := item[sl.Rate]; ok {
+				rateMap[sl.Rate] = LegBTS{
+					Prefix:  rate.Prefix,
+					Calls:   rate.Calls + 1,
+					Seconds: rate.Seconds + sl.Seconds,
+					Rate:    rate.Rate,
+					Income:  rate.Income + sl.Income,
+				}
+
+			} else {
+				result = LegBTS{
 					Prefix:  sl.Prefix,
 					Calls:   1,
 					Seconds: sl.Seconds,
 					Rate:    sl.Rate,
 					Income:  sl.Income,
 				}
-			}
-			result = LegBTS{
-				Prefix:  val.Prefix,
-				Calls:   val.Calls + 1,
-				Seconds: val.Seconds + sl.Seconds,
-				Rate:    val.Rate,
-				Income:  val.Income + sl.Income,
+				rateMap[sl.Rate] = result
 			}
 		} else {
 			result = LegBTS{
@@ -130,8 +134,10 @@ func main() {
 				Rate:    sl.Rate,
 				Income:  sl.Income,
 			}
+			rateMap[sl.Rate] = result
 		}
-		aggLegs[sl.Prefix] = result
+		aggLegs[sl.Prefix] = rateMap
+
 	}
 
 	file, err := os.OpenFile("agg_data.csv", os.O_CREATE|os.O_WRONLY, 0666)
@@ -157,17 +163,17 @@ func main() {
 	others := [][]string{}
 	count := 0
 
-	for _, aggLeg := range aggLegs {
+	for _, aggLegPrefix := range aggLegs {
+		for _, item := range aggLegPrefix {
+			line := make([]string, len(headers))
+			line[0] = item.Prefix
+			line[1] = fmt.Sprintf("%d", item.Calls)
+			line[2] = fmt.Sprintf("%d", (item.Seconds / 60))
+			line[3] = fmt.Sprintf("%.4f", item.Rate)
+			line[4] = fmt.Sprintf("%.4f", (item.Income / 60))
 
-		line := make([]string, len(headers))
-
-		line[0] = aggLeg.Prefix
-		line[1] = fmt.Sprintf("%d", aggLeg.Calls)
-		line[2] = fmt.Sprintf("%d", (aggLeg.Seconds / 60))
-		line[3] = fmt.Sprintf("%.4f", aggLeg.Rate)
-		line[4] = fmt.Sprintf("%.4f", (aggLeg.Income / 60))
-
-		others = append(others, line)
+			others = append(others, line)
+		}
 		count++
 	}
 
