@@ -104,39 +104,35 @@ func main() {
 
 	aggLegs := map[string]map[float64]LegBTS{}
 	for _, sl := range legs {
-		result := LegBTS{}
-		rateMap := map[float64]LegBTS{}
-		if item, ok := aggLegs[sl.Prefix]; ok {
-			if rate, ok := item[sl.Rate]; ok {
+		newRateMap := map[float64]LegBTS{}
+		if rateMap, ok := aggLegs[sl.Prefix]; ok {
+			if elem, ok := rateMap[sl.Rate]; ok {
 				rateMap[sl.Rate] = LegBTS{
-					Prefix:  rate.Prefix,
-					Calls:   rate.Calls + 1,
-					Seconds: rate.Seconds + sl.Seconds,
-					Rate:    rate.Rate,
-					Income:  rate.Income + sl.Income,
+					Prefix:  elem.Prefix,
+					Calls:   elem.Calls + 1,
+					Seconds: elem.Seconds + sl.Seconds,
+					Rate:    elem.Rate,
+					Income:  elem.Income + sl.Income,
 				}
-
 			} else {
-				result = LegBTS{
+				rateMap[sl.Rate] = LegBTS{
 					Prefix:  sl.Prefix,
 					Calls:   1,
 					Seconds: sl.Seconds,
 					Rate:    sl.Rate,
 					Income:  sl.Income,
 				}
-				rateMap[sl.Rate] = result
 			}
 		} else {
-			result = LegBTS{
+			newRateMap[sl.Rate] = LegBTS{
 				Prefix:  sl.Prefix,
 				Calls:   1,
 				Seconds: sl.Seconds,
 				Rate:    sl.Rate,
 				Income:  sl.Income,
 			}
-			rateMap[sl.Rate] = result
+			aggLegs[sl.Prefix] = newRateMap
 		}
-		aggLegs[sl.Prefix] = rateMap
 
 	}
 
