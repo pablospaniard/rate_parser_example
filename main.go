@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -14,7 +13,7 @@ import (
 type LegBTS struct {
 	Prefix  string
 	Calls   int
-	Minutes float64
+	Seconds int
 	Rate    float64
 	Income  float64
 }
@@ -23,7 +22,7 @@ type LegBTS struct {
 type Leg struct {
 	Source      string
 	Destination string
-	Minutes     float64
+	Seconds     int
 	Rate        float64
 	Income      float64
 	Currency    string
@@ -48,15 +47,15 @@ func main() {
 	}
 
 	r := radix.New()
-	var legBTS LegBTS
 	var legsBTS []LegBTS
 
 	for i, each := range btsData {
 		if i != 0 {
 			r.Insert(each[1], r)
+			var legBTS LegBTS
 			legBTS.Prefix = each[1]
 			legBTS.Calls, _ = strconv.Atoi(each[2])
-			legBTS.Minutes, _ = strconv.ParseFloat(each[3], 64)
+			legBTS.Seconds, _ = strconv.Atoi(each[3])
 			legBTS.Rate, _ = strconv.ParseFloat(each[4], 64)
 			legBTS.Income, _ = strconv.ParseFloat(each[5], 64)
 			legsBTS = append(legsBTS, legBTS)
@@ -79,19 +78,16 @@ func main() {
 		os.Exit(2)
 	}
 
-	var leg Leg
 	var legs []Leg
-	var aggLegs map[string]LegBTS
-
 	for i, each := range mbData {
 		if i != 0 {
-			secs, _ := strconv.ParseFloat(each[2], 64)
 			rate, _ := strconv.ParseFloat(each[3], 64)
+			var leg Leg
 			leg.Source = each[0]
 			leg.Destination = each[1]
-			leg.Minutes = secs / 60
+			leg.Seconds, _ = strconv.Atoi(each[2])
 			leg.Rate = rate / 1000000
-			leg.Income = leg.Minutes * leg.Rate
+			leg.Income = float64(leg.Seconds) * leg.Rate
 			leg.Currency = each[4]
 			// Find the longest prefix match
 			leg.Prefix, _, _ = r.LongestPrefix(each[1])
@@ -104,45 +100,84 @@ func main() {
 			legs = append(legs, leg)
 		}
 
-		for _, sl := range legs {
-			if val, ok := aggLegs[sl.Prefix]; ok {
-				if val.Rate != aggLegs[sl.Prefix].Rate {
-					fmt.Printf("rates are different for %s, should be: %f, got: %f", val.Prefix, aggLegs[sl.Prefix].Rate, val.Rate)
-					os.Exit(4)
-				}
-				counter := aggLegs[sl.Prefix].Calls + 1
-				min := aggLegs[sl.Prefix].Minutes + val.Minutes
-				income := aggLegs[sl.Prefix].Income + val.Income
+	}
 
-				result := LegBTS{
-					Prefix:  val.Prefix,
-					Calls:   counter,
-					Minutes: min,
-					Rate:    val.Rate,
-					Income:  income,
+	aggLegs := map[string]LegBTS{}
+	for i, sl := range legs {
+		result := LegBTS{}
+		if val, ok := aggLegs[sl.Prefix]; ok {
+			if val.Rate != sl.Rate {
+				aggLegs[sl.Prefix+"_"+string(i)] = LegBTS{
+					Prefix:  sl.Prefix,
+					Calls:   1,
+					Seconds: sl.Seconds,
+					Rate:    sl.Rate,
+					Income:  sl.Income,
 				}
-
-				aggLegs[sl.Prefix] = result
+			}
+			result = LegBTS{
+				Prefix:  val.Prefix,
+				Calls:   val.Calls + 1,
+				Seconds: val.Seconds + sl.Seconds,
+				Rate:    val.Rate,
+				Income:  val.Income + sl.Income,
+			}
+		} else {
+			result = LegBTS{
+				Prefix:  sl.Prefix,
+				Calls:   1,
+				Seconds: sl.Seconds,
+				Rate:    sl.Rate,
+				Income:  sl.Income,
 			}
 		}
+		aggLegs[sl.Prefix] = result
 	}
 
-	// Convert to JSON
-	jsonData, err := json.Marshal(aggLegs)
+	file, err := os.OpenFile("agg_data.csv", os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Print(err)
 		os.Exit(5)
 	}
-
-	fmt.Println(string(jsonData))
-
-	jsonFile, err := os.Create("./data.json")
-	if err != nil {
-		fmt.Println(err)
+	defer file.Close()
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+	headers := []string{
+		"Prefix",
+		"Calls",
+		"Minutes",
+		"Rate",
+		"Outcome",
 	}
-	defer jsonFile.Close()
+	if err := writer.Write(headers); err != nil {
+		fmt.Printf("couldn't write headers: %v", err)
+		os.Exit(6)
+	}
 
-	jsonFile.Write(jsonData)
-	jsonFile.Close()
+	others := [][]string{}
+	count := 0
+
+	for _, aggLeg := range aggLegs {
+
+		line := make([]string, len(headers))
+
+		line[0] = aggLeg.Prefix
+		line[1] = fmt.Sprintf("%d", aggLeg.Calls)
+		line[2] = fmt.Sprintf("%d", (aggLeg.Seconds / 60))
+		line[3] = fmt.Sprintf("%.4f", aggLeg.Rate)
+		line[4] = fmt.Sprintf("%.4f", (aggLeg.Income / 60))
+
+		others = append(others, line)
+		count++
+	}
+
+	// SAVE
+
+	if err := writer.WriteAll(others); err != nil {
+		fmt.Printf("couldn't save %v: %s", others, err)
+	}
+	writer.Flush()
+
+	fmt.Print("enjoy!\n")
 
 }
