@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 
@@ -13,7 +14,7 @@ import (
 type LegBTS struct {
 	Prefix  string
 	Calls   int
-	Seconds int
+	Minutes float64
 	Rate    float64
 	Income  float64
 }
@@ -22,7 +23,7 @@ type LegBTS struct {
 type Leg struct {
 	Source      string
 	Destination string
-	Seconds     int
+	Minutes     float64
 	Rate        float64
 	Income      float64
 	Currency    string
@@ -55,7 +56,7 @@ func main() {
 			var legBTS LegBTS
 			legBTS.Prefix = each[1]
 			legBTS.Calls, _ = strconv.Atoi(each[2])
-			legBTS.Seconds, _ = strconv.Atoi(each[3])
+			legBTS.Minutes, _ = strconv.ParseFloat(each[3], 64)
 			legBTS.Rate, _ = strconv.ParseFloat(each[4], 64)
 			legBTS.Income, _ = strconv.ParseFloat(each[5], 64)
 			legsBTS = append(legsBTS, legBTS)
@@ -82,12 +83,13 @@ func main() {
 	for i, each := range mbData {
 		if i != 0 {
 			rate, _ := strconv.ParseFloat(each[3], 64)
+			seconds, _ := strconv.ParseFloat(each[2], 64)
 			var leg Leg
 			leg.Source = each[0]
 			leg.Destination = each[1]
-			leg.Seconds, _ = strconv.Atoi(each[2])
+			leg.Minutes = math.Ceil(seconds / 60)
 			leg.Rate = rate / 1000000
-			leg.Income = float64(leg.Seconds) * leg.Rate
+			leg.Income = leg.Minutes * leg.Rate
 			leg.Currency = each[4]
 			// Find the longest prefix match
 			leg.Prefix, _, _ = r.LongestPrefix(each[1])
@@ -110,7 +112,7 @@ func main() {
 				rateMap[sl.Rate] = LegBTS{
 					Prefix:  elem.Prefix,
 					Calls:   elem.Calls + 1,
-					Seconds: elem.Seconds + sl.Seconds,
+					Minutes: elem.Minutes + sl.Minutes,
 					Rate:    elem.Rate,
 					Income:  elem.Income + sl.Income,
 				}
@@ -118,7 +120,7 @@ func main() {
 				rateMap[sl.Rate] = LegBTS{
 					Prefix:  sl.Prefix,
 					Calls:   1,
-					Seconds: sl.Seconds,
+					Minutes: sl.Minutes,
 					Rate:    sl.Rate,
 					Income:  sl.Income,
 				}
@@ -127,7 +129,7 @@ func main() {
 			newRateMap[sl.Rate] = LegBTS{
 				Prefix:  sl.Prefix,
 				Calls:   1,
-				Seconds: sl.Seconds,
+				Minutes: sl.Minutes,
 				Rate:    sl.Rate,
 				Income:  sl.Income,
 			}
@@ -164,9 +166,9 @@ func main() {
 			line := make([]string, len(headers))
 			line[0] = item.Prefix
 			line[1] = fmt.Sprintf("%d", item.Calls)
-			line[2] = fmt.Sprintf("%d", (item.Seconds / 60))
+			line[2] = fmt.Sprintf("%.0f", item.Minutes)
 			line[3] = fmt.Sprintf("%.4f", item.Rate)
-			line[4] = fmt.Sprintf("%.4f", (item.Income / 60))
+			line[4] = fmt.Sprintf("%.4f", item.Income)
 
 			others = append(others, line)
 		}
